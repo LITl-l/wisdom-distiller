@@ -1,0 +1,16 @@
+{
+  "name": "api",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --hot src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.82.0",
+    "hono": "^4.12.10",
+    "linkedom": "^0.18.12"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.2.0",
+    "typescript": "^6.0.2"
+  }
+}

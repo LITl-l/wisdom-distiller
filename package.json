@@ -1,0 +1,10 @@
+{
+  "name": "wisdom-distiller",
+  "private": true,
+  "workspaces": ["apps/web", "apps/api"],
+  "scripts": {
+    "dev": "bun run --filter '*' dev",
+    "dev:web": "bun run --filter web dev",
+    "dev:api": "bun run --filter api dev"
+  }
+}
