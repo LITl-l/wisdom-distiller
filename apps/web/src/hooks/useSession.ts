@@ -1,7 +1,11 @@
 import { createSignal } from "solid-js";
 import type { Phase, Analysis, Message } from "../types";
+import { createLLMClient, type ProviderConfig } from "../lib/llm";
+import { fetchArticle } from "../lib/fetchArticle";
+import { analyzeArticle } from "../lib/analyze";
+import { streamChatReply } from "../lib/chat";
 
-export function useSession() {
+export function useSession(getConfig: () => ProviderConfig | null) {
   const [phase, setPhase] = createSignal<Phase>("input");
   const [url, setUrl] = createSignal("");
   const [analysis, setAnalysis] = createSignal<Analysis | null>(null);
@@ -18,39 +22,23 @@ export function useSession() {
     setStreaming(false);
   }
 
+  function requireClient() {
+    const config = getConfig();
+    if (!config) throw new Error("LLM プロバイダが未設定です。設定を開いてください。");
+    return createLLMClient(config);
+  }
+
   async function startSession(inputUrl: string) {
     setUrl(inputUrl);
     setPhase("fetching");
     setError(null);
 
     try {
-      const fetchRes = await fetch("/api/fetch", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: inputUrl }),
-      });
-
-      if (!fetchRes.ok) {
-        const err = await fetchRes.json();
-        throw new Error(err.error || "Failed to fetch article");
-      }
-
-      const { text } = await fetchRes.json();
+      const llm = requireClient();
+      const { text } = await fetchArticle(inputUrl);
 
       setPhase("analyzing");
-
-      const analyzeRes = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
-      });
-
-      if (!analyzeRes.ok) {
-        const err = await analyzeRes.json();
-        throw new Error(err.error || "Failed to analyze article");
-      }
-
-      const result: Analysis = await analyzeRes.json();
+      const result = await analyzeArticle(llm, text);
 
       setAnalysis(result);
       setMessages([{ role: "assistant", content: result.first_question }]);
@@ -72,50 +60,19 @@ export function useSession() {
     setStreaming(true);
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          analysis: currentAnalysis,
-          history: newHistory,
-        }),
-      });
-
-      if (!res.ok) throw new Error("Chat request failed");
-
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
+      const llm = requireClient();
       let assistantContent = "";
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6);
-          if (data === "[DONE]") break;
-
-          try {
-            const { delta } = JSON.parse(data);
-            assistantContent += delta;
-            setMessages((prev) => {
-              const msgs = [...prev];
-              msgs[msgs.length - 1] = {
-                role: "assistant",
-                content: assistantContent,
-              };
-              return msgs;
-            });
-          } catch {
-            // skip malformed SSE lines
-          }
-        }
+      for await (const delta of streamChatReply(llm, currentAnalysis, newHistory)) {
+        assistantContent += delta;
+        setMessages((prev) => {
+          const msgs = [...prev];
+          msgs[msgs.length - 1] = {
+            role: "assistant",
+            content: assistantContent,
+          };
+          return msgs;
+        });
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error");

@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "dev": "bunx --bun vite",
-    "build": "bunx --bun vite build"
+    "build": "bunx --bun vite build",
+    "typecheck": "bunx --bun tsc --noEmit"
   },
   "dependencies": {
     "solid-js": "^1.9.12"
