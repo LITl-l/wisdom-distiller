@@ -7,6 +7,10 @@ import type { ChatRequest } from "../types";
 const app = new Hono();
 
 app.post("/", async (c) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return c.json({ error: "ANTHROPIC_API_KEY is not set" }, 500);
+  }
+
   const { analysis, history } = await c.req.json<ChatRequest>();
 
   if (!analysis || !history) {

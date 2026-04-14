@@ -5,7 +5,26 @@ import type { AnalyzeRequest, Analysis } from "../types";
 
 const app = new Hono();
 
+// Claude sometimes wraps JSON in ```json fences or adds a short preamble.
+function extractJson(raw: string): unknown {
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const candidate = (fenced ? fenced[1] : raw).trim();
+  try {
+    return JSON.parse(candidate);
+  } catch {}
+  const start = candidate.indexOf("{");
+  const end = candidate.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    return JSON.parse(candidate.slice(start, end + 1));
+  }
+  throw new Error("No JSON object found");
+}
+
 app.post("/", async (c) => {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    return c.json({ error: "ANTHROPIC_API_KEY is not set" }, 500);
+  }
+
   const { text } = await c.req.json<AnalyzeRequest>();
 
   if (!text) {
@@ -31,7 +50,7 @@ app.post("/", async (c) => {
   }
 
   try {
-    const analysis: Analysis = JSON.parse(content.text);
+    const analysis = extractJson(content.text) as Analysis;
     return c.json(analysis);
   } catch {
     return c.json({ error: "Failed to parse analysis", raw: content.text }, 500);
