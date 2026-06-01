@@ -6,7 +6,23 @@ import type {
   StructuredParams,
   TextDelta,
 } from "./types";
-import { httpToProviderError, networkToProviderError } from "./errors";
+import { httpToProviderError, networkToProviderError, ProviderError } from "./errors";
+import { toJsonSchema } from "./jsonSchema";
+
+type Strategy = ProviderCapabilities["structuredOutput"];
+
+function extractJson(raw: string): unknown {
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const body = fenced ? fenced[1] : raw;
+  const start = body.indexOf("{");
+  const end = body.lastIndexOf("}");
+  const slice = start >= 0 && end > start ? body.slice(start, end + 1) : body;
+  try {
+    return JSON.parse(slice);
+  } catch {
+    return undefined;
+  }
+}
 
 const DEFAULT_CAPS: ProviderCapabilities = {
   structuredOutput: "json_object",
@@ -82,8 +98,69 @@ export class OpenAICompatProvider implements Provider {
     }
   }
 
-  // complete<T> implemented in Task 6
-  async complete<T>(_params: StructuredParams<T>): Promise<T> {
-    throw new Error("not implemented");
+  async complete<T>(params: StructuredParams<T>): Promise<T> {
+    const strategies: Strategy[] = [this.capabilities.structuredOutput];
+    if (strategies[0] !== "prompt_only") strategies.push("prompt_only");
+
+    for (let i = 0; i < strategies.length; i++) {
+      const strategy = strategies[i];
+      const isLast = i === strategies.length - 1;
+      try {
+        const raw = await this.#requestJson(params, strategy);
+        const parsed = params.schema.safeParse(extractJson(raw));
+        if (parsed.success) return parsed.data;
+      } catch (e) {
+        if (isLast) throw e; // network/HTTP error on the final attempt → surface it
+        // otherwise fall through and try the next strategy
+      }
+    }
+    throw new ProviderError(
+      422,
+      `The model did not return valid JSON for "${params.schemaName}". Try a more capable model.`,
+    );
+  }
+
+  async #requestJson<T>(params: StructuredParams<T>, strategy: Strategy): Promise<string> {
+    const needsInstruction = strategy !== "json_schema";
+    const userContent =
+      params.prompt +
+      (needsInstruction
+        ? "\n\nReturn ONLY a single JSON object. No markdown fences, no prose."
+        : "");
+
+    const body: Record<string, unknown> = {
+      model: this.config.model,
+      temperature: 0.4,
+      max_tokens: params.maxTokens ?? 1024,
+      stream: false,
+      messages: [
+        ...(params.system ? [{ role: "system", content: params.system }] : []),
+        { role: "user", content: userContent },
+      ],
+    };
+    if (strategy === "json_schema") {
+      body.response_format = {
+        type: "json_schema",
+        json_schema: { name: params.schemaName, schema: toJsonSchema(params.schema), strict: true },
+      };
+    } else if (strategy === "json_object") {
+      body.response_format = { type: "json_object" };
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(this.#endpoint(), {
+        method: "POST",
+        headers: this.#headers(),
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      throw networkToProviderError(e, this.config);
+    }
+    if (!res.ok) {
+      throw httpToProviderError(res.status, await res.text().catch(() => ""), this.config);
+    }
+    const json = await res.json();
+    return json.choices?.[0]?.message?.content ?? "";
   }
 }
