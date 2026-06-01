@@ -76,24 +76,32 @@ export class OpenAICompatProvider implements Provider {
     const reader = res.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop() ?? "";
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("data:")) continue;
-        const data = trimmed.slice(5).trim();
-        if (data === "[DONE]") return;
-        try {
-          const json = JSON.parse(data);
-          const delta = json.choices?.[0]?.delta?.content;
-          if (delta) yield { text: delta };
-        } catch {
-          // skip malformed frame
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) continue;
+          const data = trimmed.slice(5).trim();
+          if (data === "[DONE]") return;
+          try {
+            const json = JSON.parse(data);
+            const delta = json.choices?.[0]?.delta?.content;
+            if (delta) yield { text: delta };
+          } catch {
+            // skip malformed frame
+          }
         }
+      }
+    } finally {
+      try {
+        reader.releaseLock();
+      } catch {
+        // reader may already be released/errored; ignore
       }
     }
   }
@@ -110,6 +118,10 @@ export class OpenAICompatProvider implements Provider {
         const parsed = params.schema.safeParse(extractJson(raw));
         if (parsed.success) return parsed.data;
       } catch (e) {
+        // Auth / not-found errors won't be fixed by a different output strategy.
+        if (e instanceof ProviderError && (e.status === 401 || e.status === 403 || e.status === 404)) {
+          throw e;
+        }
         if (isLast) throw e; // network/HTTP error on the final attempt → surface it
         // otherwise fall through and try the next strategy
       }

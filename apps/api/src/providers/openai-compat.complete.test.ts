@@ -69,3 +69,14 @@ test("json_schema capability sends response_format.json_schema", async () => {
   expect(sentBody.response_format.type).toBe("json_schema");
   expect(sentBody.response_format.json_schema.name).toBe("thing");
 });
+
+test("complete does not retry on an auth error (single fetch call)", async () => {
+  let call = 0;
+  globalThis.fetch = (async () => {
+    call += 1;
+    return new Response("Unauthorized", { status: 401 });
+  }) as typeof fetch;
+  const p = new OpenAICompatProvider(cfg);
+  await expect(p.complete(params)).rejects.toThrow(/api key/i);
+  expect(call).toBe(1);
+});
