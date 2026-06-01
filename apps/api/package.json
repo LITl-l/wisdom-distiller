@@ -2,12 +2,14 @@
   "name": "api",
   "private": true,
   "scripts": {
-    "dev": "bun run --hot src/index.ts"
+    "dev": "bun run --hot src/index.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
     "hono": "^4.12.10",
-    "linkedom": "^0.18.12"
+    "linkedom": "^0.18.12",
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",
