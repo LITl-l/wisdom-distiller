@@ -26,19 +26,26 @@ export class AnthropicProvider implements Provider {
   }
 
   async *streamChat(params: ChatParams, signal?: AbortSignal): AsyncIterable<TextDelta> {
-    const stream = this.#client.messages.stream(
-      {
-        model: this.config.model,
-        max_tokens: params.maxTokens ?? 512,
-        system: params.system,
-        messages: params.messages,
-      },
-      { signal },
-    );
-    for await (const event of stream as AsyncIterable<any>) {
-      if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
-        yield { text: event.delta.text };
+    try {
+      const stream = this.#client.messages.stream(
+        {
+          model: this.config.model,
+          max_tokens: params.maxTokens ?? 512,
+          system: params.system,
+          messages: params.messages,
+        },
+        { signal },
+      );
+      for await (const event of stream as AsyncIterable<any>) {
+        if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
+          yield { text: event.delta.text };
+        }
       }
+    } catch (e: any) {
+      // The SDK surfaces HTTP failures (e.g. 401) when the stream is consumed,
+      // not at construction — normalize them like complete() so the chat error
+      // frame carries a friendly, key-free message instead of a raw SDK string.
+      throw httpToProviderError(e?.status ?? 502, e?.message ?? "", this.config);
     }
   }
 

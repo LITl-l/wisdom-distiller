@@ -76,3 +76,22 @@ test("complete throws 422 when the model returns no tool_use block", async () =>
     /structured tool output/i,
   );
 });
+
+test("streamChat maps an SDK HTTP error to a normalized ProviderError", async () => {
+  const client = {
+    messages: {
+      stream: () => ({
+        async *[Symbol.asyncIterator]() {
+          throw { status: 401, message: "bad key" };
+        },
+        abort() {},
+      }),
+    },
+  } as any;
+  const p = new AnthropicProvider(cfg, client);
+  await expect(async () => {
+    for await (const _ of p.streamChat({ messages: [{ role: "user", content: "hi" }] })) {
+      // drain
+    }
+  }).toThrow(/api key/i);
+});
