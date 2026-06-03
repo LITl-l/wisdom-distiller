@@ -24,14 +24,14 @@ function chatJson(content: string): Response {
 
 test("complete returns validated data on clean JSON", async () => {
   globalThis.fetch = (async () =>
-    chatJson(JSON.stringify({ title: "ok", n: 1 }))) as typeof fetch;
+    chatJson(JSON.stringify({ title: "ok", n: 1 }))) as unknown as typeof fetch;
   const p = new OpenAICompatProvider(cfg);
   expect(await p.complete(params)).toEqual({ title: "ok", n: 1 });
 });
 
 test("complete strips ```json fences and surrounding prose", async () => {
   globalThis.fetch = (async () =>
-    chatJson('Sure!\n```json\n{"title":"x","n":2}\n```')) as typeof fetch;
+    chatJson('Sure!\n```json\n{"title":"x","n":2}\n```')) as unknown as typeof fetch;
   const p = new OpenAICompatProvider(cfg);
   expect(await p.complete(params)).toEqual({ title: "x", n: 2 });
 });
@@ -41,14 +41,14 @@ test("complete repairs once: bad first response, good retry", async () => {
   globalThis.fetch = (async () => {
     call += 1;
     return call === 1 ? chatJson("not json at all") : chatJson('{"title":"y","n":3}');
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   const p = new OpenAICompatProvider(cfg);
   expect(await p.complete(params)).toEqual({ title: "y", n: 3 });
   expect(call).toBe(2);
 });
 
 test("complete throws a 422 after the repair also fails", async () => {
-  globalThis.fetch = (async () => chatJson("never json")) as typeof fetch;
+  globalThis.fetch = (async () => chatJson("never json")) as unknown as typeof fetch;
   const p = new OpenAICompatProvider(cfg);
   await expect(p.complete(params)).rejects.toThrow(/valid JSON/i);
 });
@@ -58,7 +58,7 @@ test("json_schema capability sends response_format.json_schema", async () => {
   globalThis.fetch = (async (_url: string, init: RequestInit) => {
     sentBody = JSON.parse(init.body as string);
     return chatJson('{"title":"z","n":4}');
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   const caps: ProviderCapabilities = {
     structuredOutput: "json_schema",
     promptCaching: false,
@@ -75,7 +75,7 @@ test("complete does not retry on an auth error (single fetch call)", async () =>
   globalThis.fetch = (async () => {
     call += 1;
     return new Response("Unauthorized", { status: 401 });
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
   const p = new OpenAICompatProvider(cfg);
   await expect(p.complete(params)).rejects.toThrow(/api key/i);
   expect(call).toBe(1);

@@ -24,7 +24,7 @@ test("streamChat yields each delta's content in order", async () => {
       JSON.stringify({ choices: [{ delta: { content: "Hel" } }] }),
       JSON.stringify({ choices: [{ delta: { content: "lo" } }] }),
       "[DONE]",
-    ])) as typeof fetch;
+    ])) as unknown as typeof fetch;
 
   const p = new OpenAICompatProvider(cfg);
   const out: string[] = [];
@@ -36,7 +36,7 @@ test("streamChat yields each delta's content in order", async () => {
 
 test("streamChat throws a normalized error on HTTP 401 without leaking the key", async () => {
   globalThis.fetch = (async () =>
-    new Response("Unauthorized", { status: 401 })) as typeof fetch;
+    new Response("Unauthorized", { status: 401 })) as unknown as typeof fetch;
 
   const p = new OpenAICompatProvider({ ...cfg, apiKey: "sk-leak-me" });
   await expect(async () => {
@@ -49,7 +49,7 @@ test("streamChat throws a normalized error on HTTP 401 without leaking the key",
 test("streamChat maps a refused connection to a friendly error", async () => {
   globalThis.fetch = (async () => {
     throw { code: "ECONNREFUSED" };
-  }) as typeof fetch;
+  }) as unknown as typeof fetch;
 
   const p = new OpenAICompatProvider(cfg);
   await expect(async () => {
