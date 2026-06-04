@@ -1,10 +1,6 @@
-export type Analysis = {
-  title: string;
-  pain_points: string[];
-  cognitive_traps: string[];
-  turning_point: string;
-  first_question: string;
-};
+import type { ProviderConfig } from "./providers/types";
+
+export type { Analysis } from "./modes/socratic";
 
 export type Message = {
   role: "user" | "assistant";
@@ -22,9 +18,11 @@ export type FetchResponse = {
 
 export type AnalyzeRequest = {
   text: string;
+  provider: ProviderConfig;
 };
 
 export type ChatRequest = {
-  analysis: Analysis;
+  analysis: import("./modes/socratic").Analysis;
   history: Message[];
+  provider: ProviderConfig;
 };

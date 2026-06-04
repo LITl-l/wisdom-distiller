@@ -1,5 +1,6 @@
 import { createSignal } from "solid-js";
 import type { Phase, Analysis, Message } from "../types";
+import { providerConfig, isConfigUsable } from "../config/store";
 
 export function useSession() {
   const [phase, setPhase] = createSignal<Phase>("input");
@@ -23,6 +24,13 @@ export function useSession() {
     setPhase("fetching");
     setError(null);
 
+    const provider = providerConfig();
+    if (!isConfigUsable(provider)) {
+      setError("プロバイダが未設定です。設定からLLMを選んでください。");
+      setPhase("error");
+      return;
+    }
+
     try {
       const fetchRes = await fetch("/api/fetch", {
         method: "POST",
@@ -42,7 +50,7 @@ export function useSession() {
       const analyzeRes = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, provider }),
       });
 
       if (!analyzeRes.ok) {
@@ -68,6 +76,12 @@ export function useSession() {
     const userMessage: Message = { role: "user", content };
     const newHistory = [...messages(), userMessage];
 
+    const provider = providerConfig();
+    if (!isConfigUsable(provider)) {
+      setError("プロバイダが未設定です。設定からLLMを選んでください。");
+      return;
+    }
+
     setMessages([...newHistory, { role: "assistant", content: "" }]);
     setStreaming(true);
 
@@ -78,6 +92,7 @@ export function useSession() {
         body: JSON.stringify({
           analysis: currentAnalysis,
           history: newHistory,
+          provider,
         }),
       });
 
@@ -102,8 +117,12 @@ export function useSession() {
           if (data === "[DONE]") break;
 
           try {
-            const { delta } = JSON.parse(data);
-            assistantContent += delta;
+            const parsed = JSON.parse(data);
+            if (parsed.error) {
+              setError(parsed.error);
+              continue;
+            }
+            assistantContent += parsed.delta;
             setMessages((prev) => {
               const msgs = [...prev];
               msgs[msgs.length - 1] = {
